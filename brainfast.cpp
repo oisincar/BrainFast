@@ -185,7 +185,8 @@ public:
 
 class Program : public Grouping {
 public:
-    Program(vector<char> operators) : Grouping(NULL, 0, operators) {} // Bool is true if this is the head node (ie the base program);
+    Program(vector<char> operators) : Grouping(NULL, 0, operators) {}
+
     void Execute(){
         for(auto const& o : operators_)
             o->Execute();
@@ -195,12 +196,11 @@ public:
 int main() {
     dataPtr = &tape[0];
 
-    // ifstream t("hanoi.bf");
-    ifstream t("mandel.b");
-    // ifstream t("square.bf");
-    stringstream str;
-    str << t.rdbuf();
-    string r_prog = str.str();
+    std::cin >> std::noskipws;
+
+    std::istream_iterator<char> it(std::cin);
+    std::istream_iterator<char> end;
+    string r_prog(it, end);
 
     vector<char> p_vector(r_prog.begin(), r_prog.end());
     Program *prog = new Program(p_vector);
