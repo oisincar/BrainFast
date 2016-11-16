@@ -13,10 +13,12 @@ char tape[10000];
 map <int, int> blah_;
 
 class Operator {
+protected:
+    int offset_;
 public:
     Operator(int offset){offset_ = offset;}
-    int offset_;
     virtual void Execute(){ }
+    virtual void ApplyOffset(int offset) { offset_ += offset; }
 };
 
 
@@ -38,23 +40,40 @@ class ResetReg       : public Operator { public: ResetReg(int offset) : Operator
 
 class LinearOperands : public Operator { // increments or decrements with no special operations inbetween (I.e. no ,.[]). Usually followed by a Shift operator.
 protected:
-    map<int, int> pairs_;
+    int *pairs_;
+    int size_;
 public:
     LinearOperands(map<int, int> pairs, int offset) : Operator(offset){
-        // for(auto elem : pairs)
-        //     pairs_[elem.first + offset] = elem.second;
-        pairs_ = pairs;
+        size_ = pairs.size()*2;
+
+        pairs_ = new int[size_];
+
+        int c = 0;
+        for(auto elem : pairs){
+            pairs_[c++] = elem.first + offset_;
+            pairs_[c++] = elem.second;
+        }
     }
-    virtual void Execute(){
-        for(auto elem : pairs_)
-            *(dataPtr + elem.first + offset_) += elem.second;
+    virtual void Execute() {
+        for (int i = 0; i < size_; i+=2)
+            *(dataPtr + pairs_[i]) += pairs_[i+1];
+    }
+    virtual void ApplyOffset(int offset){
+        offset_ += offset;
+        for (int i = 0; i < size_; i+=2)
+            pairs_[i] += offset;
     }
 };
 
 // TODO: Fix bug with specific simple loops where the starting value isn't changed by 1 or -1.
+// TODO: Don't do math to change the looping variable to 0, need to not include that in the map.
 class MultiplyLoop    : public LinearOperands { // loops which start and end on the same point in the ticker.. Eg [>++<-] which kinda multiplies the current buffer by 2
+private:
+    int baseOffset_;
 public:
-    MultiplyLoop(map<int, int> pairs, int offset) : LinearOperands(pairs, offset) {}
+    MultiplyLoop(map<int, int> pairs, int offset) : LinearOperands(pairs, offset) {
+        baseOffset_ = pairs[0];
+    }
     void Execute() {
         char currVal = *(dataPtr + offset_);
 
@@ -62,10 +81,10 @@ public:
 
         // TODO: Handle complex case, where the base offset isn't 1 or -1. Note this is currently filtered upstream..
         // number of times the 'loop' would go.
-        int loop_t = (pairs_[0] > 0) ? 256-currVal : currVal;
+        int loop_t = (baseOffset_ > 0) ? 256-currVal : currVal;
 
-        for(auto elem : pairs_)
-            *(dataPtr + elem.first + offset_) += (elem.second * loop_t);
+        for (int i = 0; i < size_; i+=2)
+            *(dataPtr + pairs_[i]) += (pairs_[i+1] * loop_t);
     }
 };
 
@@ -138,7 +157,10 @@ public:
 
                         // Deal with offset changes.
                         if (loop_offset != 0){
-                            if (l_oper) l_oper->offset_ -= loop_offset;
+
+                            if (l_oper)
+                                l_oper->ApplyOffset(-loop_offset);
+
                             operators_.push_back(new Shift(loop_offset));
                             loop_offset = 0;
                         }
