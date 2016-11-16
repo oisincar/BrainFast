@@ -33,12 +33,13 @@ public: int times_;
     }
 };
 
-class Shift          : public Operator { public: Shift   (int offset) : Operator(offset){} void Execute(){ dataPtr += offset_; } };
-class Dot            : public Operator { public: Dot     (int offset) : Operator(offset){} void Execute(){ putchar(*(dataPtr + offset_)); } };
-class Comma          : public Operator { public: Comma   (int offset) : Operator(offset){} void Execute(){ cin >> *(dataPtr + offset_); } };
-class ResetReg       : public Operator { public: ResetReg(int offset) : Operator(offset){} void Execute(){ *(dataPtr + offset_) = 0; } }; // a loop which looks like [-] or [+]
+class Shift    : public Operator { public: Shift   (int off) : Operator(off){} void Execute(){ dataPtr += offset_; } };
+class Dot      : public Operator { public: Dot     (int off) : Operator(off){} void Execute(){ putchar(*(dataPtr + offset_)); } };
+class Comma    : public Operator { public: Comma   (int off) : Operator(off){} void Execute(){ cin >> *(dataPtr + offset_); } };
+class ResetReg : public Operator { public: ResetReg(int off) : Operator(off){} void Execute(){ *(dataPtr + offset_) = 0; } }; 
 
-class LinearOperands : public Operator { // increments or decrements with no special operations inbetween (I.e. no ,.[]). Usually followed by a Shift operator.
+// Increments or decrements with no special operations inbetween (I.e. no ,.[]). Usually followed by a Shift operator.
+class LinearOperands : public Operator { 
 protected:
     int *pairs_;
     int size_;
@@ -66,13 +67,14 @@ public:
 };
 
 // TODO: Fix bug with specific simple loops where the starting value isn't changed by 1 or -1.
-// TODO: Don't do math to change the looping variable to 0, need to not include that in the map.
-class MultiplyLoop    : public LinearOperands { // loops which start and end on the same point in the ticker.. Eg [>++<-] which kinda multiplies the current buffer by 2
+// loops which start and end on the same point in the ticker.. Eg [>++<-] which kinda multiplies the current buffer by 2
+class MultiplyLoop : public LinearOperands { 
 private:
+    // Amount the loop offsets it's counting variable.
     int baseOffset_;
 public:
-    MultiplyLoop(map<int, int> pairs, int offset) : LinearOperands(pairs, offset) {
-        baseOffset_ = pairs[0];
+    MultiplyLoop(map<int, int> pairs, int offset, int baseOffset) : LinearOperands(pairs, offset) {
+        baseOffset_ = baseOffset;
     }
     void Execute() {
         char currVal = *(dataPtr + offset_);
@@ -82,6 +84,9 @@ public:
         // TODO: Handle complex case, where the base offset isn't 1 or -1. Note this is currently filtered upstream..
         // number of times the 'loop' would go.
         int loop_t = (baseOffset_ > 0) ? 256-currVal : currVal;
+
+        // Set counter variable for loop to 0;
+        *(dataPtr + offset_) = 0;
 
         for (int i = 0; i < size_; i+=2)
             *(dataPtr + pairs_[i]) += (pairs_[i+1] * loop_t);
@@ -138,8 +143,12 @@ public:
                 if (isCompleteLoop && offset == 0) { // simple loop, can be calculated in one step
                     if (increments.size() == 1) // either infinite loop or resetReg, assume latter.
                         operators_.push_back(new ResetReg(loop_offset));
-                    else
-                        operators_.push_back(new MultiplyLoop(increments, loop_offset));
+                    else {
+                        // Remove the loop variable from the Multiply loop, and pass it separately.
+                        int baseOffset = increments[0];
+                        increments.erase(0);
+                        operators_.push_back(new MultiplyLoop(increments, loop_offset, baseOffset));
+                    }
                 }
                 else {
                     Operator *l_oper = NULL;
@@ -155,7 +164,7 @@ public:
 
                     if (c == '[') {  // if we're at the start of a loop, we have to pass what we calculated down recursively.
 
-                        // Deal with offset changes.
+                        // Apply offset changes.
                         if (loop_offset != 0){
 
                             if (l_oper)
@@ -165,7 +174,7 @@ public:
                             loop_offset = 0;
                         }
 
-                        // chew until closing bracket and recurse.
+                        // Chew until closing bracket and recurse.
                         int bracketLvl = 1;
                         vector<char> subOperators;
                         while (true){
